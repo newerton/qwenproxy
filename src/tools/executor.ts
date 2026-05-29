@@ -6,10 +6,10 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import type { ParsedToolCall, ToolCallResult, ToolContext } from './types.ts';
-import { SchemaValidationError } from './schema.ts';
-import { registry } from './registry.ts';
 import { robustParseJSON } from '../utils/json.ts';
+import { registry } from './registry.ts';
+import { SchemaValidationError } from './schema.ts';
+import type { ParsedToolCall, ToolCallResult, ToolContext } from './types.ts';
 
 export interface ExecutionLoopConfig {
   maxTurns?: number;
@@ -27,7 +27,7 @@ export interface LoopTurnResult {
 export type LLMSendFunction = (
   messages: unknown[],
   tools: unknown[] | undefined,
-  model: string
+  model: string,
 ) => Promise<LLMResponse>;
 
 export interface LLMResponse {
@@ -56,7 +56,10 @@ export function parseToolCallsFromContent(content: string): {
 
     textContent += remaining.substring(0, startIdx);
 
-    const endIdx = remaining.indexOf(TOOL_END_TAG, startIdx + TOOL_START_TAG.length);
+    const endIdx = remaining.indexOf(
+      TOOL_END_TAG,
+      startIdx + TOOL_START_TAG.length,
+    );
     if (endIdx === -1) {
       textContent += remaining.substring(startIdx);
       break;
@@ -67,20 +70,25 @@ export function parseToolCallsFromContent(content: string): {
       .trim();
 
     try {
-      const parsed = robustParseJSON(jsonStr);
+      const parsed = robustParseJSON(jsonStr) as {
+        name: string;
+        arguments?: unknown;
+      };
       if (!parsed) throw new Error('Failed to parse JSON');
-      
+
       toolCalls.push({
-        id: 'call_' + uuidv4(),
+        id: `call_${uuidv4()}`,
         name: parsed.name || '',
-        arguments: parsed.arguments 
-          ? (typeof parsed.arguments === 'string' ? JSON.parse(parsed.arguments) : parsed.arguments)
+        arguments: parsed.arguments
+          ? typeof parsed.arguments === 'string'
+            ? JSON.parse(parsed.arguments)
+            : parsed.arguments
           : (() => {
               const { name, ...rest } = parsed;
               return rest;
             })(),
       });
-    } catch (e) {
+    } catch (_e) {
       textContent += TOOL_START_TAG + jsonStr + TOOL_END_TAG;
     }
 
@@ -92,7 +100,7 @@ export function parseToolCallsFromContent(content: string): {
 
 export async function executeToolCalls(
   toolCalls: ParsedToolCall[],
-  context: ToolContext
+  context: ToolContext,
 ): Promise<ToolCallResult[]> {
   return await Promise.all(
     toolCalls.map(async (tc) => {
@@ -120,14 +128,18 @@ export async function executeToolCalls(
           toolCallId: tc.id,
           name: tc.name,
           result: JSON.stringify({
-            error: isValidation ? 'Schema validation failed' : 'Tool execution error',
+            error: isValidation
+              ? 'Schema validation failed'
+              : 'Tool execution error',
             details: message,
-            ...(isValidation ? { path: (err as SchemaValidationError).path } : {}),
+            ...(isValidation
+              ? { path: (err as SchemaValidationError).path }
+              : {}),
           }),
           isError: true,
         };
       }
-    })
+    }),
   );
 }
 
@@ -141,7 +153,7 @@ function buildToolMessage(result: ToolCallResult): Record<string, unknown> {
 
 function buildAssistantToolCallMessage(
   content: string | null,
-  toolCalls: ParsedToolCall[]
+  toolCalls: ParsedToolCall[],
 ): Record<string, unknown> {
   return {
     role: 'assistant',
@@ -151,9 +163,10 @@ function buildAssistantToolCallMessage(
       type: 'function',
       function: {
         name: tc.name,
-        arguments: typeof tc.arguments === 'string'
-          ? tc.arguments
-          : JSON.stringify(tc.arguments),
+        arguments:
+          typeof tc.arguments === 'string'
+            ? tc.arguments
+            : JSON.stringify(tc.arguments),
       },
     })),
   };
@@ -163,24 +176,29 @@ export async function runExecutionLoop(
   sendToLLM: LLMSendFunction,
   messages: unknown[],
   model: string,
-  config: ExecutionLoopConfig = {}
+  config: ExecutionLoopConfig = {},
 ): Promise<string> {
   const maxTurns = config.maxTurns ?? 10;
   const debug = config.debug ?? false;
 
-  const tools = registry.listNames().length > 0
-    ? registry.toOpenAITools()
-    : undefined;
+  const tools =
+    registry.listNames().length > 0 ? registry.toOpenAITools() : undefined;
 
   for (let turn = 0; turn < maxTurns; turn++) {
     if (debug) {
-      console.log(`[executor] Turn ${turn + 1}/${maxTurns}, messages: ${messages.length}`);
+      console.log(
+        `[executor] Turn ${turn + 1}/${maxTurns}, messages: ${messages.length}`,
+      );
     }
 
     const response = await sendToLLM(messages, tools, model);
 
-    const hasStructuredToolCalls = response.toolCalls && response.toolCalls.length > 0;
-    let parsedFromContent: { textContent: string; toolCalls: ParsedToolCall[] } | null = null;
+    const hasStructuredToolCalls =
+      response.toolCalls && response.toolCalls.length > 0;
+    let parsedFromContent: {
+      textContent: string;
+      toolCalls: ParsedToolCall[];
+    } | null = null;
 
     if (!hasStructuredToolCalls && response.content) {
       parsedFromContent = parseToolCallsFromContent(response.content);
@@ -210,13 +228,15 @@ export async function runExecutionLoop(
     if (debug) {
       console.log(
         `[executor] Executing ${effectiveToolCalls.length} tool calls:`,
-        effectiveToolCalls.map((tc) => tc.name)
+        effectiveToolCalls.map((tc) => tc.name),
       );
     }
 
     const toolResults = await executeToolCalls(effectiveToolCalls, context);
 
-    messages.push(buildAssistantToolCallMessage(effectiveContent, effectiveToolCalls));
+    messages.push(
+      buildAssistantToolCallMessage(effectiveContent, effectiveToolCalls),
+    );
 
     for (const result of toolResults) {
       messages.push(buildToolMessage(result));
@@ -225,12 +245,12 @@ export async function runExecutionLoop(
     if (debug) {
       console.log(
         `[executor] Tool results:`,
-        toolResults.map((r) => ({ name: r.name, isError: r.isError }))
+        toolResults.map((r) => ({ name: r.name, isError: r.isError })),
       );
     }
   }
 
   throw new Error(
-    `Execution loop exceeded maximum turns (${maxTurns}). The agent may be stuck in a cycle.`
+    `Execution loop exceeded maximum turns (${maxTurns}). The agent may be stuck in a cycle.`,
   );
 }

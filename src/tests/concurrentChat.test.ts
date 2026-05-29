@@ -1,9 +1,9 @@
-import test from 'node:test';
 import assert from 'node:assert';
 import net from 'node:net';
+import test from 'node:test';
 import { serve } from '@hono/node-server';
 import { app } from '../index.ts';
-import { initPlaywright, closePlaywright } from '../services/playwright.ts';
+import { closePlaywright, initPlaywright } from '../services/playwright.ts';
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -36,22 +36,22 @@ test('Concurrent chat requests check for "chat is in progress"', async () => {
     const requestPayload = {
       model: 'qwen3.6-plus',
       messages: [{ role: 'user', content: 'Say "hello" and nothing else.' }],
-      stream: false
+      stream: false,
     };
 
     console.log('[ConcurrentTest] Sending 2 requests concurrently...');
-    
+
     // Dispara duas requisições simultaneamente para simular concorrência na mesma sessão
     const p1 = fetch(`http://localhost:${port}/v1/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestPayload)
+      body: JSON.stringify(requestPayload),
     });
 
     const p2 = fetch(`http://localhost:${port}/v1/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestPayload)
+      body: JSON.stringify(requestPayload),
     });
 
     const [res1, res2] = await Promise.all([p1, p2]);
@@ -59,13 +59,28 @@ test('Concurrent chat requests check for "chat is in progress"', async () => {
     const data1 = await res1.json();
     const data2 = await res2.json();
 
-    console.log('[ConcurrentTest] Result 1:', res1.status, JSON.stringify(data1).substring(0, 200));
-    console.log('[ConcurrentTest] Result 2:', res2.status, JSON.stringify(data2).substring(0, 200));
+    console.log(
+      '[ConcurrentTest] Result 1:',
+      res1.status,
+      JSON.stringify(data1).substring(0, 200),
+    );
+    console.log(
+      '[ConcurrentTest] Result 2:',
+      res2.status,
+      JSON.stringify(data2).substring(0, 200),
+    );
 
     // Se a concorrência não estiver sendo tratada, um deles pode falhar com o erro "in progress"
-    assert.strictEqual(res1.status, 200, `Request 1 failed: ${JSON.stringify(data1)}`);
-    assert.strictEqual(res2.status, 200, `Request 2 failed: ${JSON.stringify(data2)}`);
-
+    assert.strictEqual(
+      res1.status,
+      200,
+      `Request 1 failed: ${JSON.stringify(data1)}`,
+    );
+    assert.strictEqual(
+      res2.status,
+      200,
+      `Request 2 failed: ${JSON.stringify(data2)}`,
+    );
   } finally {
     await closePlaywright();
     server.close();

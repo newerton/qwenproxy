@@ -4,20 +4,25 @@
  * Agent runtime state machine types
  */
 
-import type { Message, ParsedToolCall, ToolCallResult, FunctionToolDefinition, ToolPolicy } from '../types/openai.ts';
+import type {
+  FunctionToolDefinition,
+  Message,
+  ParsedToolCall,
+  ToolCallResult,
+} from '../types/openai.ts';
 
 // ─── Agent Lifecycle States ──────────────────────────────────────────────────
 
 export type AgentPhase =
-  | 'idle'          // Agent created, not yet started
-  | 'planning'      // Building messages, injecting tools
-  | 'calling_llm'   // Waiting for LLM response
-  | 'parsing'       // Parsing LLM response for tool calls
-  | 'executing'     // Running tool calls
-  | 'streaming'     // Forwarding stream to client
-  | 'completed'     // Final response delivered
-  | 'error'         // Unrecoverable error
-  | 'aborted';      // User/system aborted
+  | 'idle' // Agent created, not yet started
+  | 'planning' // Building messages, injecting tools
+  | 'calling_llm' // Waiting for LLM response
+  | 'parsing' // Parsing LLM response for tool calls
+  | 'executing' // Running tool calls
+  | 'streaming' // Forwarding stream to client
+  | 'completed' // Final response delivered
+  | 'error' // Unrecoverable error
+  | 'aborted'; // User/system aborted
 
 // ─── Agent State ─────────────────────────────────────────────────────────────
 
@@ -111,14 +116,56 @@ export interface AgentConfig {
 // ─── Event Types (for observability) ─────────────────────────────────────────
 
 export type AgentEvent =
-  | { type: 'phase_change'; from: AgentPhase; to: AgentPhase; timestamp: number }
-  | { type: 'llm_request'; turn: number; messageCount: number; timestamp: number }
-  | { type: 'llm_response'; turn: number; contentLength: number; toolCallCount: number; timestamp: number }
-  | { type: 'tool_start'; turn: number; toolName: string; toolCallId: string; timestamp: number }
-  | { type: 'tool_end'; turn: number; toolName: string; toolCallId: string; isError: boolean; duration: number; timestamp: number }
+  | {
+      type: 'phase_change';
+      from: AgentPhase;
+      to: AgentPhase;
+      timestamp: number;
+    }
+  | {
+      type: 'llm_request';
+      turn: number;
+      messageCount: number;
+      timestamp: number;
+    }
+  | {
+      type: 'llm_response';
+      turn: number;
+      contentLength: number;
+      toolCallCount: number;
+      timestamp: number;
+    }
+  | {
+      type: 'tool_start';
+      turn: number;
+      toolName: string;
+      toolCallId: string;
+      timestamp: number;
+    }
+  | {
+      type: 'tool_end';
+      turn: number;
+      toolName: string;
+      toolCallId: string;
+      isError: boolean;
+      duration: number;
+      timestamp: number;
+    }
   | { type: 'stream_chunk'; turn: number; chunkSize: number; timestamp: number }
-  | { type: 'error'; phase: AgentPhase; code: string; message: string; timestamp: number }
-  | { type: 'completed'; turn: number; totalTokens: number; duration: number; timestamp: number };
+  | {
+      type: 'error';
+      phase: AgentPhase;
+      code: string;
+      message: string;
+      timestamp: number;
+    }
+  | {
+      type: 'completed';
+      turn: number;
+      totalTokens: number;
+      duration: number;
+      timestamp: number;
+    };
 
 export type AgentEventListener = (event: AgentEvent) => void;
 
@@ -152,7 +199,7 @@ export type LLMAdapter = {
     messages: Message[],
     tools: FunctionToolDefinition[] | undefined,
     model: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<LLMResponse>;
 
   /** Send messages and get a streaming response */
@@ -160,6 +207,6 @@ export type LLMAdapter = {
     messages: Message[],
     tools: FunctionToolDefinition[] | undefined,
     model: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): AsyncGenerator<LLMStreamChunk>;
 };

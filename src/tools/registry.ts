@@ -4,6 +4,7 @@
  * Tool registry with register/lookup and OpenAI-compatible schema export
  */
 
+import { validateAgainstSchema } from './schema.ts';
 import type {
   FunctionToolDefinition,
   JsonSchema,
@@ -11,7 +12,6 @@ import type {
   ToolHandler,
   ToolRegistration,
 } from './types.ts';
-import { validateAgainstSchema, SchemaValidationError } from './schema.ts';
 
 /**
  * Central tool registry. Tools are registered at startup and looked up by name
@@ -29,12 +29,12 @@ export class ToolRegistry {
    * @param strict      When true, additionalProperties:false is enforced and
    *                    missing required fields are rejected (default true)
    */
-  register<TArgs = any, TResult = any>(
+  register<TArgs = unknown, TResult = unknown>(
     name: string,
     description: string,
     parameters: JsonSchema,
     handler: ToolHandler<TArgs, TResult>,
-    strict = true
+    strict = true,
   ): void {
     if (this.tools.has(name)) {
       throw new Error(`Tool '${name}' is already registered`);
@@ -112,7 +112,7 @@ export class ToolRegistry {
   async execute(
     toolName: string,
     rawArgs: Record<string, unknown>,
-    context: ToolContext
+    context: ToolContext,
   ): Promise<string> {
     const registration = this.tools.get(toolName);
     if (!registration) {
@@ -123,7 +123,7 @@ export class ToolRegistry {
     const validatedArgs = validateAgainstSchema(
       rawArgs,
       registration.parameters,
-      `$.${toolName}`
+      `$.${toolName}`,
     ) as Record<string, unknown>;
 
     const result = await registration.handler(validatedArgs, context);

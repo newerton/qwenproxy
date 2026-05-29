@@ -5,37 +5,22 @@
  * Manages phase transitions, LLM calls, tool execution, and event emission.
  */
 
-import { v4 as uuidv4 } from "uuid";
-import type {
-  AgentState,
-  AgentPhase,
-  AgentConfig,
-  AgentEvent,
-  AgentEventListener,
-  LLMAdapter,
-  LLMResponse,
-} from "./types.ts";
-import type {
-  Message,
-  ParsedToolCall,
-  ToolCallResult,
-  FunctionToolDefinition,
-} from "../types/openai.ts";
-import { registry } from "../tools/registry.ts";
-import { SchemaValidationError } from "../tools/schema.ts";
+import { v4 as uuidv4 } from 'uuid';
+import type { FunctionToolDefinition, Message } from '../types/openai.ts';
+import type { AgentConfig, AgentState } from './types.ts';
 
 // ─── State Factory ─────────────────────────────────────────────────────────────
 
-function createInitialState(
+function _createInitialState(
   model: string,
   stream: boolean,
   messages: Message[],
   tools: FunctionToolDefinition[],
-  config: AgentConfig
+  config: AgentConfig,
 ): AgentState {
   const now = Date.now();
   return {
-    phase: "idle",
+    phase: 'idle',
     runId: uuidv4(),
     model,
     stream,
@@ -67,5 +52,5 @@ function createInitialState(
 
 // ─── Tool Execution ────────────────────────────────────────────────────────────
 
-const TOOL_START_TAG = '<' + 'tool_call>';
-const TOOL_END_TAG = '</' + 'tool_call>';
+const _TOOL_START_TAG = '<' + 'tool_call>';
+const _TOOL_END_TAG = '</' + 'tool_call>';

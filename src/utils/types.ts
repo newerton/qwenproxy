@@ -3,19 +3,24 @@
  * Project: qwenproxy
  * Author: Pedro Farias
  * Created: 2026-05-09
- * 
+ *
  * Last Modified: Sat May 09 2026
  * Modified By: Pedro Farias
  */
 
-import type { JsonSchema, FunctionToolDefinition } from '../tools/types.ts';
-export type { JsonSchema, FunctionToolDefinition };
+import type { FunctionToolDefinition, JsonSchema } from '../tools/types.ts';
+
+export type { FunctionToolDefinition, JsonSchema };
 
 /** Tool choice options */
-export type ToolChoice = 'auto' | 'none' | 'required' | {
-  type: 'function';
-  function: { name: string };
-};
+export type ToolChoice =
+  | 'auto'
+  | 'none'
+  | 'required'
+  | {
+      type: 'function';
+      function: { name: string };
+    };
 
 // --- Message Types ---
 

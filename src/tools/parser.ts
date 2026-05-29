@@ -7,8 +7,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { robustParseJSON } from '../utils/json.ts';
-import type { ParsedToolCall } from './types.ts';
-import type { FunctionToolDefinition } from './types.ts';
+import type { FunctionToolDefinition, ParsedToolCall } from './types.ts';
 
 export interface ParserResult {
   text: string;
@@ -35,8 +34,13 @@ function coerceParameterValue(rawValue: string): unknown {
   if (value === 'false') return false;
   if (value === 'null') return null;
   if (/^-?\d+(?:\.\d+)?$/.test(value)) return Number(value);
-  if ((value.startsWith('{') && value.endsWith('}')) || (value.startsWith('[') && value.endsWith(']'))) {
-    try { return JSON.parse(value); } catch {}
+  if (
+    (value.startsWith('{') && value.endsWith('}')) ||
+    (value.startsWith('[') && value.endsWith(']'))
+  ) {
+    try {
+      return JSON.parse(value);
+    } catch {}
   }
   return value;
 }
@@ -46,7 +50,9 @@ function coerceParameterValue(rawValue: string): unknown {
  */
 function extractToolName(openTag: string, block: string): string {
   const combined = `${openTag}\n${block}`;
-  const attrMatch = combined.match(/<tool_call\b[^>]*\bname\s*=\s*["']([^"']+)["']/i);
+  const attrMatch = combined.match(
+    /<tool_call\b[^>]*\bname\s*=\s*["']([^"']+)["']/i,
+  );
   if (attrMatch) return attrMatch[1];
 
   const nameTagMatch = block.match(/<name>([\s\S]*?)<\/name>/i);
@@ -59,18 +65,24 @@ function extractToolName(openTag: string, block: string): string {
  * Infer tool name by matching parameter keys against tool definitions.
  * Only returns a name if exactly one tool matches all argument keys.
  */
-function inferToolNameFromParameters(args: Record<string, unknown>, tools: FunctionToolDefinition[]): string {
+function inferToolNameFromParameters(
+  args: Record<string, unknown>,
+  tools: FunctionToolDefinition[],
+): string {
   const argKeys = Object.keys(args);
   if (argKeys.length === 0 || !Array.isArray(tools)) return '';
 
   const matches = tools.filter((tool) => {
-    const fn = tool?.type === 'function' ? tool.function : (tool as any)?.function;
+    const fn = tool?.type === 'function' ? tool.function : tool?.function;
     const properties = fn?.parameters?.properties || {};
-    return argKeys.every(k => Object.prototype.hasOwnProperty.call(properties, k));
+    return argKeys.every((k) => Object.hasOwn(properties, k));
   });
 
   if (matches.length === 1) {
-    const fn = matches[0]?.type === 'function' ? matches[0].function : (matches[0] as any)?.function;
+    const fn =
+      matches[0]?.type === 'function'
+        ? matches[0].function
+        : matches[0]?.function;
     return fn?.name || '';
   }
 
@@ -83,18 +95,21 @@ function inferToolNameFromParameters(args: Record<string, unknown>, tools: Funct
 function parseXmlParameterToolCall(
   block: string,
   openTag: string,
-  tools: FunctionToolDefinition[]
+  tools: FunctionToolDefinition[],
 ): { name: string; arguments: Record<string, unknown> } | null {
   const args: Record<string, unknown> = {};
-  const parameterRe = /<parameter\b[^>]*\bname\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/parameter>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = parameterRe.exec(block)) !== null) {
+  const parameterRe =
+    /<parameter\b[^>]*\bname\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/parameter>/gi;
+  let match = parameterRe.exec(block);
+  while (match !== null) {
     args[match[1]] = coerceParameterValue(match[2]);
+    match = parameterRe.exec(block);
   }
 
   if (Object.keys(args).length === 0) return null;
 
-  const toolName = extractToolName(openTag, block) || inferToolNameFromParameters(args, tools);
+  const toolName =
+    extractToolName(openTag, block) || inferToolNameFromParameters(args, tools);
   if (!toolName) return null;
 
   return { name: toolName, arguments: args };
@@ -107,29 +122,33 @@ function parseXmlParameterToolCall(
 function parseRecoverableXmlToolCall(
   block: string,
   openTag: string,
-  tools: FunctionToolDefinition[]
+  tools: FunctionToolDefinition[],
 ): { name: string; arguments: Record<string, unknown> } | null {
   const args: Record<string, unknown> = {};
 
   // First, extract all properly closed parameters
-  const closedParameterRe = /<parameter\b[^>]*\bname\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/parameter>/gi;
-  let match: RegExpExecArray | null;
+  const closedParameterRe =
+    /<parameter\b[^>]*\bname\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/parameter>/gi;
+  const match = closedParameterRe.exec(block);
   let lastClosedEnd = 0;
-  while ((match = closedParameterRe.exec(block)) !== null) {
+  while (match !== null) {
     args[match[1]] = coerceParameterValue(match[2]);
     lastClosedEnd = closedParameterRe.lastIndex;
   }
 
   // Then look for an unclosed parameter at the tail
   const tail = block.substring(lastClosedEnd);
-  const unclosedMatch = tail.match(/<parameter\b[^>]*\bname\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*)$/i);
+  const unclosedMatch = tail.match(
+    /<parameter\b[^>]*\bname\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*)$/i,
+  );
   if (unclosedMatch) {
     args[unclosedMatch[1]] = coerceParameterValue(unclosedMatch[2]);
   }
 
   if (Object.keys(args).length === 0) return null;
 
-  const toolName = extractToolName(openTag, block) || inferToolNameFromParameters(args, tools);
+  const toolName =
+    extractToolName(openTag, block) || inferToolNameFromParameters(args, tools);
   if (!toolName) return null;
 
   return { name: toolName, arguments: args };
@@ -147,7 +166,8 @@ function findPartialToolOpenIndex(buffer: string): number {
 
   // Check for partial prefix at end (e.g. `<tool`, `<tool_`, `<tool_c`)
   for (let i = 1; i < TOOL_START_LITERAL.length; i++) {
-    if (lower.endsWith(TOOL_START_LITERAL.substring(0, i))) return buffer.length - i;
+    if (lower.endsWith(TOOL_START_LITERAL.substring(0, i)))
+      return buffer.length - i;
   }
   return -1;
 }
@@ -193,11 +213,11 @@ export class StreamingToolParser {
           this.insideTool = true;
           this.currentOpenTag = match[0];
           this.buffer = this.buffer.substring(match.index + match[0].length);
-          continue;
         } else {
           // No full open tag found. Check for partial at end.
           const partialIdx = findPartialToolOpenIndex(this.buffer);
-          const flushIndex = partialIdx === -1 ? this.buffer.length : partialIdx;
+          const flushIndex =
+            partialIdx === -1 ? this.buffer.length : partialIdx;
           if (flushIndex > 0) {
             const textToEmit = this.buffer.substring(0, flushIndex);
             // Only emit as content if no tool calls have been emitted yet
@@ -242,15 +262,23 @@ export class StreamingToolParser {
           this.pendingLeadIn = '';
         } else {
           // Recovery failed. Restore lead-in text if no tools were emitted.
-          console.warn('[parser] Dropping unrecoverable unclosed tool call at end of stream');
-          if (this.emittedToolCallCount === 0 && this.pendingLeadIn.trim().length > 0) {
+          console.warn(
+            '[parser] Dropping unrecoverable unclosed tool call at end of stream',
+          );
+          if (
+            this.emittedToolCallCount === 0 &&
+            this.pendingLeadIn.trim().length > 0
+          ) {
             result.text += this.pendingLeadIn;
           }
           this.pendingLeadIn = '';
         }
       } else {
         // Empty tool call block - restore lead-in
-        if (this.emittedToolCallCount === 0 && this.pendingLeadIn.trim().length > 0) {
+        if (
+          this.emittedToolCallCount === 0 &&
+          this.pendingLeadIn.trim().length > 0
+        ) {
           result.text += this.pendingLeadIn;
         }
         this.pendingLeadIn = '';
@@ -290,7 +318,10 @@ export class StreamingToolParser {
     if (!t) {
       // Empty tool call - malformed. Restore lead-in if possible.
       console.warn('[parser] Dropping empty tool call block');
-      if (this.emittedToolCallCount === 0 && this.pendingLeadIn.trim().length > 0) {
+      if (
+        this.emittedToolCallCount === 0 &&
+        this.pendingLeadIn.trim().length > 0
+      ) {
         result.text += this.pendingLeadIn;
       }
       this.pendingLeadIn = '';
@@ -298,7 +329,11 @@ export class StreamingToolParser {
     }
 
     // 1) Try Hermes-style XML <parameter> format first
-    const xmlParsed = parseXmlParameterToolCall(t, this.currentOpenTag, this.tools);
+    const xmlParsed = parseXmlParameterToolCall(
+      t,
+      this.currentOpenTag,
+      this.tools,
+    );
     if (xmlParsed) {
       result.toolCalls.push({
         id: `call_${uuidv4()}`,
@@ -350,7 +385,10 @@ export class StreamingToolParser {
     // Never leak internal XML to user-visible content.
     // Restore lead-in text if no tools were emitted.
     console.warn('[parser] Dropping malformed tool call block');
-    if (this.emittedToolCallCount === 0 && this.pendingLeadIn.trim().length > 0) {
+    if (
+      this.emittedToolCallCount === 0 &&
+      this.pendingLeadIn.trim().length > 0
+    ) {
       result.text += this.pendingLeadIn;
     }
     this.pendingLeadIn = '';
@@ -358,7 +396,11 @@ export class StreamingToolParser {
 
   private tryRecoverToolCall(block: string): ParsedToolCall | null {
     // Try full parse first
-    const xmlParsed = parseXmlParameterToolCall(block, this.currentOpenTag, this.tools);
+    const xmlParsed = parseXmlParameterToolCall(
+      block,
+      this.currentOpenTag,
+      this.tools,
+    );
     if (xmlParsed) {
       return {
         id: `call_${uuidv4()}`,
@@ -368,7 +410,11 @@ export class StreamingToolParser {
     }
 
     // Try recoverable (unclosed parameters)
-    const recovered = parseRecoverableXmlToolCall(block, this.currentOpenTag, this.tools);
+    const recovered = parseRecoverableXmlToolCall(
+      block,
+      this.currentOpenTag,
+      this.tools,
+    );
     if (recovered) {
       return {
         id: `call_${uuidv4()}`,
@@ -398,23 +444,30 @@ export class StreamingToolParser {
     }
   }
 
-  private parseToolCall(parsed: any): ParsedToolCall | null {
+  private parseToolCall(parsed: {
+    name?: string;
+    function?: { name: string; arguments?: unknown };
+    arguments?: Record<string, unknown> | string;
+  }): ParsedToolCall | null {
     if (!parsed || typeof parsed !== 'object') return null;
-    
+
     const name = parsed.name || parsed.function?.name;
     if (!name || typeof name !== 'string') return null;
-    
+
     let args = parsed.arguments || parsed.function?.arguments || {};
     if (typeof args === 'string') {
-      try { args = JSON.parse(args); }
-      catch { args = {}; }
+      try {
+        args = JSON.parse(args);
+      } catch {
+        args = {};
+      }
     }
     if (typeof args !== 'object' || args === null) args = {};
 
     return {
       id: `call_${uuidv4()}`,
       name,
-      arguments: args,
+      arguments: args as Record<string, unknown>,
     };
   }
 }

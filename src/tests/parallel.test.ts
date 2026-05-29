@@ -1,5 +1,5 @@
-import { test } from 'node:test';
 import assert from 'node:assert';
+import { test } from 'node:test';
 import { executeToolCalls } from '../tools/executor.ts';
 import { registry } from '../tools/registry.ts';
 import type { ToolContext } from '../tools/types.ts';
@@ -15,10 +15,10 @@ test('executeToolCalls: parallel execution', async () => {
     async () => {
       activeCount++;
       maxParallel = Math.max(maxParallel, activeCount);
-      await new Promise(r => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 100));
       activeCount--;
       return 'done';
-    }
+    },
   );
 
   const toolCalls = [
@@ -30,13 +30,13 @@ test('executeToolCalls: parallel execution', async () => {
   const context: ToolContext = {
     messages: [],
     turn: 0,
-    model: 'test'
+    model: 'test',
   };
 
   const results = await executeToolCalls(toolCalls, context);
-  
+
   assert.strictEqual(results.length, 3);
   assert.ok(maxParallel > 1, `Max parallel should be > 1, got ${maxParallel}`);
-  
+
   registry.unregister('parallel_tool');
 });

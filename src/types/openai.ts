@@ -153,7 +153,7 @@ export interface ToolCallResult {
 
 export type ToolHandler = (
   args: Record<string, unknown>,
-  context: ToolExecutionContext
+  context: ToolExecutionContext,
 ) => Promise<unknown>;
 
 export interface ToolExecutionContext {
